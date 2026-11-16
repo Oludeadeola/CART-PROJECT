@@ -33,13 +33,22 @@ import matplotlib
 matplotlib.use("Agg")                      # draw to memory, not to a window:
                                            # required on a headless cloud server
 import matplotlib.pyplot as plt
+# Imported explicitly so we can guarantee the figure has an Agg canvas.
+# scikit-learn's plot_tree needs canvas.get_renderer() to measure the text it
+# draws, and the plain base canvas does not provide it.
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import ListedColormap
 import seaborn as sns
 import streamlit as st
 
 from sklearn.datasets import load_iris, load_diabetes
 from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
+from sklearn.tree import (
+    DecisionTreeClassifier,
+    DecisionTreeRegressor,
+    export_text,     # plain-text version of a tree, used as a safe fallback
+    plot_tree,
+)
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
@@ -78,7 +87,7 @@ def render(fig):
     WHY: Streamlit re-runs the script on every interaction. Without the
     plt.close() the app would slowly leak figures and warn about it."""
     fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
+    st.pyplot(fig)
     plt.close(fig)
 
 
@@ -335,27 +344,63 @@ elif model.get_depth() >= 6:
         "advantage trees have over other models — being readable by a human."
     )
 
-# A bigger figure means a sharper image when someone pinches to zoom on a
-# phone, because Streamlit sends the chart as a fixed-size picture.
-fig, ax = plt.subplots(
-    figsize=(16, max(5, min(9, model.get_depth() * 1.8))), dpi=160
-)
-plot_tree(
-    model,
-    feature_names=feature_names,
-    class_names=class_names,        # None for regression - sklearn handles that
-    filled=True,                    # colour each box by its majority class /
+def draw_tree_diagram(fitted_model, names, classes, subtitle):
+    """Draw the tree picture, and never let a drawing problem kill the page.
+
+    WHY THIS IS NOT JUST plot_tree():
+      scikit-learn measures the text it is about to draw by asking the figure
+      for a "renderer". That only exists on an Agg canvas. Depending on the
+      matplotlib version and the server, a bare figure can come back with the
+      base canvas instead, and plot_tree then fails.
+      So we attach an Agg canvas ourselves, and if anything still goes wrong we
+      fall back to a TEXT version of exactly the same tree. The audience still
+      sees the rules; only the picture is lost.
+    """
+    fig, ax = plt.subplots(figsize=(16, max(5, min(9, fitted_model.get_depth() * 1.8))))
+    FigureCanvasAgg(fig)                     # guarantees canvas.get_renderer()
+    if not hasattr(fig.canvas, "get_renderer"):
+        # Last-resort shim for matplotlib builds that renamed the method.
+        fig.canvas.get_renderer = fig._get_renderer
+
+    plot_tree(
+        fitted_model,
+        feature_names=names,
+        class_names=classes,        # None for regression - sklearn handles that
+        filled=True,                # colour each box by its majority class /
                                     # predicted value; darker = purer / higher
-    rounded=True,
-    fontsize=8,
-    precision=2,
-    ax=ax,
-)
-ax.set_title(
+        rounded=True,
+        fontsize=8,
+        precision=2,
+        ax=ax,
+    )
+    ax.set_title(subtitle)
+    render(fig)
+
+
+tree_subtitle = (
     f"CART tree — criterion={criterion}, max_depth={max_depth}, "
     f"min_samples_leaf={min_samples_leaf}, ccp_alpha={ccp_alpha:.3f}"
 )
-render(fig)
+
+try:
+    draw_tree_diagram(model, feature_names, class_names, tree_subtitle)
+except Exception as exc:                     # noqa: BLE001 - we want every error
+    plt.close("all")                         # drop the half-built figure
+    st.warning(
+        "The tree picture could not be drawn on this server, so here are the "
+        "same rules written out as text. Every line is one question; the "
+        "indentation shows the branches."
+    )
+    st.code(
+        export_text(
+            model,
+            feature_names=list(feature_names),
+            decimals=2,
+            show_weights=True,
+        ),
+        language="text",
+    )
+    st.caption(f"(Technical detail, for debugging: {type(exc).__name__}: {exc})")
 
 st.info(
     "**How to read a box.** The top line is the question — if it is true you go "
@@ -414,7 +459,6 @@ if is_classification:
         st.markdown("**Per-species report (test set)**")
         st.dataframe(
             pd.DataFrame(report).transpose().round(3),
-            use_container_width=True,
         )
         st.caption(
             "**precision** = of the flowers I *called* this species, how many "
@@ -561,7 +605,6 @@ The dotted vertical line marks the depth you have selected. Drag `max_depth` to
             "train": np.round(train_scores, 3),
             "test": np.round(test_scores, 3),
         }).set_index("max_depth"),
-        use_container_width=True,
         height=240,
     )
 
@@ -724,7 +767,6 @@ the other gets nothing left to contribute.
     )
     st.dataframe(
         importances.sort_values(ascending=False).round(4).rename("importance"),
-        use_container_width=True,
     )
 
 st.divider()
@@ -862,7 +904,6 @@ else:
         st.dataframe(
             pd.Series(sample_arr[0], index=feature_names).round(4)
               .rename("standardised value"),
-            use_container_width=True,
         )
 
     with res_right:

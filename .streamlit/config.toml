@@ -1,0 +1,15 @@
+# Streamlit settings for this app.
+#
+# toolbarMode = "minimal" hides the developer menu that Streamlit Community
+# Cloud normally shows in the top-right corner. That menu contains a
+# "View app source" link pointing at the GitHub repository, which also reveals
+# the account name. "minimal" leaves viewers with only the basics.
+[client]
+toolbarMode = "minimal"
+showErrorDetails = "none"   # viewers see a short message, not a Python traceback
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
