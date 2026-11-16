@@ -63,6 +63,28 @@ st.set_page_config(
     layout="wide",                         # use the full browser width
 )
 
+# --- Hide the hosting platform's own chrome ---------------------------------
+# Streamlit Community Cloud adds a toolbar and badges around the app. Those
+# include a link back to the source repository, which also shows the account
+# name. This CSS removes them so viewers see only the demo itself.
+# NOTE: the owner still sees the developer tools while signed in to Streamlit.
+# To check what the audience actually sees, open the app in a private window.
+st.markdown(
+    """
+    <style>
+      #MainMenu {visibility: hidden; height: 0;}
+      header [data-testid="stToolbar"] {visibility: hidden; height: 0;}
+      [data-testid="stToolbar"] {visibility: hidden; height: 0; position: fixed;}
+      [data-testid="stDecoration"] {display: none;}
+      [data-testid="stStatusWidget"] {visibility: hidden; height: 0;}
+      [data-testid="manage-app-button"] {display: none;}
+      .viewerBadge_container__1QSob, .viewerBadge_link__qRIco {display: none;}
+      footer {visibility: hidden; height: 0;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --- A small, fixed, colour-blind-safe palette -------------------------------
 # One colour per class, always in the same order, so a colour never changes
 # meaning while the audience is watching. Blue = training, orange = testing.
