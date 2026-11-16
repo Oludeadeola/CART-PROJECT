@@ -268,7 +268,10 @@ if is_classification:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Test accuracy", f"{acc_test:.1%}",
               delta=f"{acc_test - acc_train:+.1%} vs train",
-              delta_color="inverse",   # training above testing = overfitting = bad
+              # A NEGATIVE gap means the test score sits below the training
+              # score - that is overfitting, and it must look BAD (red).
+              # "normal" = negative shows red. Do NOT use "inverse" here.
+              delta_color="normal",
               help="Share of unseen flowers classified correctly. The delta "
                    "shows the gap to training accuracy; a big negative gap "
                    "means the tree is memorising.")
@@ -316,7 +319,27 @@ st.divider()
 
 st.subheader("1. The decision tree the model learned")
 
-fig, ax = plt.subplots(figsize=(16, max(5, min(9, model.get_depth() * 1.8))))
+# If the sliders have pruned the tree away to nothing, say so in words - an
+# empty-looking diagram just confuses the audience.
+if model.get_n_leaves() <= 1:
+    st.warning(
+        "**The tree has been pruned down to a single box.** With these settings "
+        "it cannot ask any question at all, so it gives every row the same "
+        "answer. That is *underfitting* — the opposite problem to overfitting. "
+        "Lower `ccp_alpha` or `min_samples_leaf` to let it grow again."
+    )
+elif model.get_depth() >= 6:
+    st.warning(
+        "**This tree is now too big to read on a screen.** That is itself the "
+        "lesson: once a tree needs this many questions, you have lost the one "
+        "advantage trees have over other models — being readable by a human."
+    )
+
+# A bigger figure means a sharper image when someone pinches to zoom on a
+# phone, because Streamlit sends the chart as a fixed-size picture.
+fig, ax = plt.subplots(
+    figsize=(16, max(5, min(9, model.get_depth() * 1.8))), dpi=160
+)
 plot_tree(
     model,
     feature_names=feature_names,
@@ -670,7 +693,10 @@ with imp_left:
     fig, ax = plt.subplots(figsize=(7.5, max(3.2, 0.45 * len(feature_names) + 1.4)))
     bars = ax.barh(importances.index, importances.values,
                    color=COLOR_TRAIN, height=0.62)   # one series → no legend
-    top = max(importances.values.max(), 1e-9)
+    # Edge case a student WILL hit: if ccp_alpha is dragged high enough the
+    # tree collapses to a single root node, every importance is 0.0, and the
+    # chart would otherwise render with a nonsense axis.
+    top = max(float(importances.values.max()), 1e-9)
     # Direct value labels: the reader should not have to measure against an axis.
     for bar, value in zip(bars, importances.values):
         ax.text(value + top * 0.02, bar.get_y() + bar.get_height() / 2,
